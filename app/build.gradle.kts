@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.piperandroid"
-        minSdk = 26 // Required for sherpa-onnx AAR compatibility usually, adjust if needed
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -40,6 +40,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     
-    // Sherpa Onnx AAR for Android (Includes native libs for Piper/VITS)
-    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx-android:1.9.21") 
+    // Sherpa-ONNX Android library (includes native binaries for Piper/VITS)
+    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:1.10.39")
 }
