@@ -15,18 +15,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5 # Updated to v5 to remove deprecation warning
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4 # Updated to v4 to remove deprecation warning
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # Step 1: Auto-Generate Keystore with "Endless" Validity (Year 9975)
+      # 🌟 NEW STEP: Download models from your GitHub Release into the assets folder
+      - name: Download Piper Models to Assets
+        run: |
+          mkdir -p app/src/main/assets/
+          echo "Downloading en_US-lessac-medium.onnx..."
+          curl -L -o app/src/main/assets/en_US-lessac-medium.onnx "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/en_US-lessac-medium.onnx"
+          echo "Downloading en_US-lessac-medium.onnx.json..."
+          curl -L -o app/src/main/assets/en_US-lessac-medium.onnx.json "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/en_US-lessac-medium.onnx.json"
+          
+          echo "Verifying downloaded files:"
+          ls -lh app/src/main/assets/
+
+      # Step 1: Auto-Generate Keystore with "Endless" Validity
       - name: Generate Debug Keystore
         run: |
           keytool -genkeypair \
@@ -39,7 +51,7 @@ jobs:
             -keypass android \
             -dname "CN=Android Debug, O=Android, C=US"
 
-      # Step 2: Build APK
+      # Step 2: Build APK (Now includes the downloaded assets)
       - name: Build APK
         run: |
           ./gradlew assembleRelease --stacktrace
