@@ -117,18 +117,15 @@ class MainActivity : AppCompatActivity() {
             try {
                 val originalSamples = allGeneratedSamples.toShortArray()
                 
-                // 🎯 CRITICAL: Upsample to 44100 Hz for video editor compatibility
-                // Piper outputs 22050 Hz, but CapCut/InShot/VN/KineMaster require 44100 Hz
+                // 🎯 Upsample to 44100 Hz for video editor compatibility
                 val upsampledSamples = upsample2x(originalSamples)
                 val targetSampleRate = originalSampleRate * 2  // 44100 Hz
                 
                 val fileName = "PiperTTS_${System.currentTimeMillis()}.wav"
                 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // Android 10+ : Use MediaStore (no permissions needed)
                     saveViaMediaStore(upsampledSamples, targetSampleRate, fileName)
                 } else {
-                    // Android 9 and below: Use direct file write
                     saveViaLegacyStorage(upsampledSamples, targetSampleRate, fileName)
                 }
             } catch (e: Exception) {
@@ -149,7 +146,6 @@ class MainActivity : AppCompatActivity() {
         for (i in samples.indices) {
             result[i * 2] = samples[i]
             if (i < samples.size - 1) {
-                // Linear interpolation between current and next sample
                 val interpolated = (samples[i].toInt() + samples[i + 1].toInt()) / 2
                 result[i * 2 + 1] = interpolated.toShort()
             } else {
@@ -172,11 +168,7 @@ class MainActivity : AppCompatActivity() {
             put(MediaStore.Audio.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
         }
         
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        } else {
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        }
+        val collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         
         val uri = resolver.insert(collection, contentValues)
         uri?.let {
@@ -186,7 +178,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             
-            // Mark as fully written
             val updateValues = ContentValues().apply {
                 put(MediaStore.Audio.Media.IS_PENDING, 0)
             }
@@ -238,26 +229,22 @@ class MainActivity : AppCompatActivity() {
         val dataSize = samples.size * 2
         val headerSize = 44
         
-        // RIFF Header
         out.write("RIFF".toByteArray())
         out.write(intToByteArray(headerSize + dataSize - 8))
         out.write("WAVE".toByteArray())
         
-        // fmt chunk
         out.write("fmt ".toByteArray())
-        out.write(intToByteArray(16))                    // Chunk size
-        out.write(shortToByteArray(1))                   // PCM format
-        out.write(shortToByteArray(channels.toShort()))  // Mono
-        out.write(intToByteArray(sampleRate))            // 44100 Hz
-        out.write(intToByteArray(byteRate))              // Byte rate
+        out.write(intToByteArray(16))
+        out.write(shortToByteArray(1))
+        out.write(shortToByteArray(channels.toShort()))
+        out.write(intToByteArray(sampleRate))
+        out.write(intToByteArray(byteRate))
         out.write(shortToByteArray(blockAlign.toShort()))
         out.write(shortToByteArray(bitsPerSample.toShort()))
         
-        // data chunk
         out.write("data".toByteArray())
         out.write(intToByteArray(dataSize))
         
-        // Audio samples
         val buffer = java.nio.ByteBuffer.allocate(dataSize)
         buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
         for (s in samples) buffer.putShort(s)
