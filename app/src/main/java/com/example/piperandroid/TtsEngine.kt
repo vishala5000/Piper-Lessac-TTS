@@ -11,8 +11,6 @@ class TtsEngine(private val context: Context) {
 
     private var tts: OfflineTts? = null
     private var initError: String? = null
-    
-    // Folder name inside assets (matches what GitHub Actions extracts)
     private val modelFolder = "piper-model"
     
     suspend fun initIfNeeded(): Boolean {
@@ -21,11 +19,11 @@ class TtsEngine(private val context: Context) {
         
         val modelDir = File(context.filesDir, modelFolder)
         
-        // Extract entire model folder from APK assets
+        // Extract model from APK assets
         if (!modelDir.exists()) {
             try {
                 extractAssetsToInternal(modelFolder, modelDir)
-                Log.d("TtsEngine", "✅ Model extracted successfully from APK assets.")
+                Log.d("TtsEngine", "✅ Model extracted successfully.")
             } catch (e: Exception) {
                 initError = "Failed to extract model: ${e.message}"
                 Log.e("TtsEngine", initError!!, e)
@@ -33,22 +31,24 @@ class TtsEngine(private val context: Context) {
             }
         }
         
-        // Locate required files in extracted folder
+        // Find required files
         val modelFile = findFile(modelDir, ".onnx")
         val tokensFile = File(modelDir, "tokens.txt")
         val espeakDataDir = File(modelDir, "espeak-ng-data")
         
-        // Validate all required files exist
         if (modelFile == null || !modelFile.exists()) {
             initError = "Missing .onnx model file"
+            Log.e("TtsEngine", initError!!)
             return false
         }
         if (!tokensFile.exists()) {
-            initError = "Missing tokens.txt file"
+            initError = "Missing tokens.txt"
+            Log.e("TtsEngine", initError!!)
             return false
         }
         if (!espeakDataDir.exists()) {
             initError = "Missing espeak-ng-data folder"
+            Log.e("TtsEngine", initError!!)
             return false
         }
         
@@ -56,33 +56,32 @@ class TtsEngine(private val context: Context) {
         Log.d("TtsEngine", "📁 Tokens: ${tokensFile.absolutePath}")
         Log.d("TtsEngine", "📁 espeak-ng: ${espeakDataDir.absolutePath}")
         
-        val vitsConfig = OfflineTtsVitsModelConfig(
-            model = modelFile.absolutePath,
-            lexicon = "",
-            tokens = tokensFile.absolutePath,
-            dataDir = espeakDataDir.parentFile?.absolutePath ?: "",
-            dictDir = "",
-            noiseScale = 0.667f,
-            noiseScaleW = 0.8f,
-            lengthScale = 1.0f
-        )
-        
-        val modelConfig = OfflineTtsModelConfig(
-            vits = vitsConfig,
-            numThreads = 4,
-            debug = false,
-            provider = "cpu"
-        )
-        
-        val config = OfflineTtsConfig(
-            model = modelConfig,
-            ruleFsts = "",
-            maxNumSentences = 2
-        )
-        
         try {
+            val vitsConfig = OfflineTtsVitsModelConfig(
+                model = modelFile.absolutePath,
+                lexicon = "",
+                tokens = tokensFile.absolutePath,
+                dataDir = espeakDataDir.parentFile?.absolutePath ?: "",
+                dictDir = "",
+                noiseScale = 0.667f,
+                noiseScaleW = 0.8f,
+                lengthScale = 1.0f
+            )
+            
+            val modelConfig = OfflineTtsModelConfig(
+                vits = vitsConfig,
+                numThreads = 4,
+                debug = false
+            )
+            
+            val config = OfflineTtsConfig(
+                model = modelConfig,
+                ruleFsts = "",
+                maxNumSentences = 2
+            )
+            
             tts = OfflineTts(null, config)
-            Log.d("TtsEngine", "✅ TTS Engine Initialized successfully (100% Offline).")
+            Log.d("TtsEngine", "✅ TTS Engine Initialized (100% Offline).")
             return true
         } catch (e: Exception) {
             initError = "TTS Init failed: ${e.message}"
@@ -91,9 +90,6 @@ class TtsEngine(private val context: Context) {
         }
     }
 
-    /**
-     * Recursively extracts a folder from APK assets to internal storage
-     */
     private fun extractAssetsToInternal(assetFolder: String, destDir: File) {
         val assetManager = context.assets
         val files = assetManager.list(assetFolder) ?: return
@@ -104,13 +100,10 @@ class TtsEngine(private val context: Context) {
             val assetPath = "$assetFolder/$fileName"
             val destFile = File(destDir, fileName)
             
-            // Check if it's a subdirectory
             val subFiles = assetManager.list(assetPath)
             if (subFiles != null && subFiles.isNotEmpty()) {
-                // It's a directory - recurse
                 extractAssetsToInternal(assetPath, destFile)
             } else {
-                // It's a file - copy it
                 assetManager.open(assetPath).use { input ->
                     destFile.outputStream().use { output ->
                         input.copyTo(output)
@@ -146,8 +139,6 @@ class TtsEngine(private val context: Context) {
                     val result = tts!!.generate(chunk, sid = 0, speed = 1.0f)
                     if (result.samples.isNotEmpty()) {
                         onChunkGenerated(result.samples, result.sampleRate)
-                    } else {
-                        Log.w("TtsGen", "Empty audio for chunk: $chunk")
                     }
                 } catch (e: Exception) {
                     Log.e("TtsGen", "Failed to generate chunk: $chunk", e)
