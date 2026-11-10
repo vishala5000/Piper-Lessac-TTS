@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- NO INTERNET - 100% OFFLINE -->
+    <!-- NO INTERNET PERMISSION - 100% OFFLINE -->
     
     <!-- Only needed for Android 9 and below to save to public Downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
