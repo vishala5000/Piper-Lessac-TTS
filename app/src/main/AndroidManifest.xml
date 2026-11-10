@@ -3,14 +3,12 @@
 
     <!-- NO INTERNET PERMISSION - 100% OFFLINE -->
     
-    <!-- Only needed for Android 9 and below to save to public Downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
         android:maxSdkVersion="28" />
 
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
         android:label="Piper TTS Offline"
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true"
