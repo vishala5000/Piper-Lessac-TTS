@@ -17,7 +17,6 @@ class AudioPlayer {
             AudioFormat.ENCODING_PCM_16BIT
         )
         
-        // Use a buffer 4x the minimum for ultra-smooth, gapless streaming
         val bufferSize = maxOf(minBufferSize * 4, 32768)
 
         audioTrack = AudioTrack.Builder()
@@ -31,7 +30,7 @@ class AudioPlayer {
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .build())
             .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM) // CRITICAL for real-time chunked playback
+            .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
         
         audioTrack?.play()
@@ -53,7 +52,6 @@ class AudioPlayer {
             buffer.putShort(s)
         }
 
-        // Stream the chunk directly to the audio hardware
         track.write(buffer.array(), 0, byteCount)
     }
 
