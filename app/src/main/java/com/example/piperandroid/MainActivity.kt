@@ -18,7 +18,6 @@ class MainActivity : AppCompatActivity() {
     private val ttsEngine by lazy { TtsEngine(this) }
     private val player = AudioPlayer()
     
-    // PERFECT MEMORY: Accumulate Short directly to avoid Float->Short conversion twice
     private var allGeneratedSamples = mutableListOf<Short>()
     private var lastSampleRate: Int = 0
     private var isGenerating = false
@@ -40,7 +39,7 @@ class MainActivity : AppCompatActivity() {
 
             if (isGenerating) return@setOnClickListener
             isGenerating = true
-            btnGenerate.text = "Generating & Playing..."
+            btnGenerate.text = "Downloading Model..."
             btnGenerate.isEnabled = false
             btnDownload.isEnabled = false
             
@@ -48,33 +47,46 @@ class MainActivity : AppCompatActivity() {
             lastSampleRate = 0
 
             lifecycleScope.launch {
-                ttsEngine.generateAudioStreaming(text) { samples, sampleRate ->
-                    // Initialize player on the first chunk
-                    if (lastSampleRate == 0) {
-                        lastSampleRate = sampleRate
-                        player.init(sampleRate)
+                ttsEngine.generateAudioStreaming(
+                    text = text,
+                    onChunkGenerated = { samples, sampleRate ->
+                        if (lastSampleRate == 0) {
+                            lastSampleRate = sampleRate
+                            player.init(sampleRate)
+                            runOnUiThread { btnGenerate.text = "Generating & Playing..." }
+                        }
+                        
+                        val shortChunk = ShortArray(samples.size)
+                        for (i in samples.indices) {
+                            val clamped = samples[i].coerceIn(-1.0f, 1.0f)
+                            shortChunk[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
+                        }
+                        allGeneratedSamples.addAll(shortChunk.toList())
+                        player.playChunk(samples)
+                    },
+                    onError = { errorMsg ->
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
+                            isGenerating = false
+                            btnGenerate.text = "Generate & Play"
+                            btnGenerate.isEnabled = true
+                        }
                     }
-                    
-                    // Convert Float to Short ONCE and accumulate for download
-                    val shortChunk = ShortArray(samples.size)
-                    for (i in samples.indices) {
-                        val clamped = samples[i].coerceIn(-1.0f, 1.0f)
-                        shortChunk[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
-                    }
-                    allGeneratedSamples.addAll(shortChunk.toList())
-                    
-                    // Play immediately (Real-time, gapless)
-                    player.playChunk(samples)
-                }
+                )
                 
-                // Wait for the audio hardware to finish playing the last chunk
-                player.waitForCompletion()
+                // Only wait for completion if we actually started playing
+                if (lastSampleRate > 0) {
+                    player.waitForCompletion()
+                }
                 
                 isGenerating = false
                 btnGenerate.text = "Generate & Play"
                 btnGenerate.isEnabled = true
-                btnDownload.isEnabled = true
-                Toast.makeText(this@MainActivity, "Playback Complete", Toast.LENGTH_SHORT).show()
+                
+                if (lastSampleRate > 0) {
+                    btnDownload.isEnabled = true
+                    Toast.makeText(this@MainActivity, "Playback Complete", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
@@ -99,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         
         try {
             val shortSamples = allGeneratedSamples.toShortArray()
-            val totalDataLen = shortSamples.size * 2 // 2 bytes per short
+            val totalDataLen = shortSamples.size * 2
 
             FileOutputStream(file).use { fos ->
                 writeWavHeader(fos, totalDataLen, sampleRate, 1, 16)
@@ -140,19 +152,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun intToByteArray(value: Int): ByteArray {
-        return byteArrayOf(
-            value.toByte(),
-            (value shr 8).toByte(),
-            (value shr 16).toByte(),
-            (value shr 24).toByte()
-        )
+        return byteArrayOf(value.toByte(), (value shr 8).toByte(), (value shr 16).toByte(), (value shr 24).toByte())
     }
 
     private fun shortToByteArray(value: Short): ByteArray {
-        return byteArrayOf(
-            value.toByte(),
-            (value.toInt() shr 8).toByte()
-        )
+        return byteArrayOf(value.toByte(), (value.toInt() shr 8).toByte())
     }
     
     override fun onDestroy() {
