@@ -11,7 +11,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io") // <-- This is required for the sherpa-onnx AAR
+        maven("https://jitpack.io")
     }
 }
 
