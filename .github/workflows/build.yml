@@ -1,1 +1,83 @@
+name: Build and Sign Piper TTS App
 
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # Step 1: Auto-Generate Keystore (No Secrets Needed)
+      - name: Generate Debug Keystore
+        run: |
+          keytool -genkeypair \
+            -alias piper_android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -keystore debug.keystore \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      # Step 2: Build Unsigned/Debug APK via Gradle
+      - name: Build APK
+        run: |
+          ./gradlew assembleRelease --stacktrace
+          # We copy the output to a known location for signing
+          cp app/build/outputs/apk/release/app-release-unsigned.apk unsigned.apk || true
+          # If gradle didn't produce unsigned, we grab the standard one
+          if [ ! -f unsigned.apk ]; then
+             cp app/build/outputs/apk/release/app-release.apk unsigned.apk
+          fi
+
+      # Step 3: Sign with apksigner explicitly
+      - name: Sign APK with apksigner
+        run: |
+          # Locate apksigner from setup-android
+          APKSIGNER=$(find $ANDROID_HOME -name "apksigner" -type f | head -n 1)
+          
+          if [ -z "$APKSIGNER" ]; then
+            echo "apksigner not found!"
+            exit 1
+          fi
+
+          $APKSIGNER sign \
+            --ks debug.keystore \
+            --ks-key-alias piper_android \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out piper-tts-signed.apk \
+            unsigned.apk
+
+      # Step 4: Verify Signature
+      - name: Verify APK Signature
+        run: |
+          APKSIGNER=$(find $ANDROID_HOME -name "apksigner" -type f | head -n 1)
+          $APKSIGNER verify --verbose piper-tts-signed.apk
+
+      # Step 5: Upload Artifact
+      - name: Upload Signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Piper-TTS-App
+          path: piper-tts-signed.apk
