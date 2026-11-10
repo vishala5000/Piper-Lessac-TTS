@@ -6,7 +6,6 @@ import com.k2fsa.sherpa.onnx.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.URL
 
 class TtsEngine(private val context: Context) {
 
@@ -24,18 +23,14 @@ class TtsEngine(private val context: Context) {
         val onnxFile = File(modelDir, "$modelName.onnx")
         val jsonFile = File(modelDir, "$modelName.onnx.json")
         
+        // Copy from APK assets to internal storage if not already there
         if (!onnxFile.exists() || !jsonFile.exists()) {
-            Log.d("TtsEngine", "Downloading model (this may take a minute)...")
-            // Use HuggingFace resolve URL for maximum reliability
-            val onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/$modelName.onnx"
-            val jsonUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/$modelName.onnx.json"
-            
             try {
-                downloadFile(onnxUrl, onnxFile)
-                downloadFile(jsonUrl, jsonFile)
-                Log.d("TtsEngine", "Model downloaded successfully.")
+                copyAssetToFile("$modelName.onnx", onnxFile)
+                copyAssetToFile("$modelName.onnx.json", jsonFile)
+                Log.d("TtsEngine", "Model extracted from assets successfully.")
             } catch (e: Exception) {
-                initError = "Model download failed. Check internet. (${e.message})"
+                initError = "Failed to extract model from assets: ${e.message}"
                 Log.e("TtsEngine", initError!!, e)
                 return false
             }
@@ -51,7 +46,7 @@ class TtsEngine(private val context: Context) {
         
         val modelConfig = OfflineTtsModelConfig(
             vits = vitsConfig,
-            numThreads = 2, // Optimized for mobile CPU
+            numThreads = 4, // Maximize offline generation speed
             debug = false
         )
         
@@ -63,7 +58,7 @@ class TtsEngine(private val context: Context) {
         
         try {
             tts = OfflineTts(null, config)
-            Log.d("TtsEngine", "TTS Engine Initialized successfully.")
+            Log.d("TtsEngine", "TTS Engine Initialized successfully (100% Offline).")
             return true
         } catch (e: Exception) {
             initError = "TTS Initialization failed: ${e.message}"
@@ -72,12 +67,10 @@ class TtsEngine(private val context: Context) {
         }
     }
 
-    private suspend fun downloadFile(urlStr: String, dest: File) {
-        withContext(Dispatchers.IO) {
-            URL(urlStr).openStream().use { input ->
-                dest.outputStream().use { output ->
-                    input.copyTo(output)
-                }
+    private fun copyAssetToFile(assetName: String, destFile: File) {
+        context.assets.open(assetName).use { input ->
+            destFile.outputStream().use { output ->
+                input.copyTo(output)
             }
         }
     }
@@ -94,6 +87,7 @@ class TtsEngine(private val context: Context) {
         }
         
         val cleanText = text.replace(Regex("\\s+"), " ").trim()
+        // Split only on sentence endings for perfect, natural prosody
         val chunks = cleanText.split("(?<=[.!?])\\s+".toRegex())
             .map { it.trim() }
             .filter { it.isNotEmpty() }
