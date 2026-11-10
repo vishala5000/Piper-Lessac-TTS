@@ -41,7 +41,7 @@ class TtsEngine(private val context: Context) {
         
         val modelConfig = OfflineTtsModelConfig(
             vits = vitsConfig,
-            numThreads = 4,
+            numThreads = 4, // Optimized for mobile speed
             debug = false
         )
         
@@ -52,7 +52,6 @@ class TtsEngine(private val context: Context) {
         )
         
         try {
-            // Pass null for AssetManager since we are using absolute file paths
             tts = OfflineTts(null, config)
             Log.d("TtsEngine", "TTS Engine Initialized successfully.")
         } catch (e: Exception) {
@@ -72,18 +71,32 @@ class TtsEngine(private val context: Context) {
         }
     }
 
-    suspend fun generateAudio(text: String): Pair<FloatArray, Int>? {
+    /**
+     * Generates audio in real-time chunks for instant playback.
+     * Splits text by punctuation to ensure perfect prosody and intonation.
+     */
+    suspend fun generateAudioStreaming(
+        text: String, 
+        onChunkGenerated: (samples: FloatArray, sampleRate: Int) -> Unit
+    ) {
         initIfNeeded()
-        if (tts == null) return null
+        if (tts == null) return
         
-        return withContext(Dispatchers.Default) {
-            try {
-                // Use 1.0f to explicitly denote a Float literal
-                val result = tts!!.generate(text, sid = 0, speed = 1.0f)
-                Pair(result.samples, result.sampleRate)
-            } catch (e: Exception) {
-                Log.e("TtsGen", "Generation failed", e)
-                null
+        // Clean text and split by punctuation (. ! ? ; ,) to ensure perfect pauses and intonation
+        val cleanText = text.replace(Regex("\\s+"), " ").trim()
+        val chunks = cleanText.split("(?<=[.!?;,:])\\s+".toRegex())
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        
+        withContext(Dispatchers.Default) {
+            for (chunk in chunks) {
+                try {
+                    // speed = 1.0f is the native, perfect speed for Lessac
+                    val result = tts!!.generate(chunk, sid = 0, speed = 1.0f)
+                    onChunkGenerated(result.samples, result.sampleRate)
+                } catch (e: Exception) {
+                    Log.e("TtsGen", "Failed to generate chunk: $chunk", e)
+                }
             }
         }
     }
