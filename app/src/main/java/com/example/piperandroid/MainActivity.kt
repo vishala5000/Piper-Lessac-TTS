@@ -44,9 +44,7 @@ class MainActivity : AppCompatActivity() {
                     lastGeneratedSamples = result.first
                     lastSampleRate = result.second
                     
-                    // Realtime Play
                     player.play(lastGeneratedSamples!!, lastSampleRate)
-                    
                     Toast.makeText(this@MainActivity, "Playing...", Toast.LENGTH_SHORT).show()
                     btnDownload.isEnabled = true
                 } else {
@@ -68,7 +66,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun saveWavFile(samples: FloatArray, sampleRate: Int) {
-        // Save to internal storage app-specific directory
         val dir = File(filesDir, "audio")
         if (!dir.exists()) dir.mkdirs()
         
@@ -79,11 +76,12 @@ class MainActivity : AppCompatActivity() {
             val shortSamples = ShortArray(samples.size)
             for (i in samples.indices) {
                 val clamped = samples[i].coerceIn(-1.0f, 1.0f)
-                shortSamples[i] = (clamped * Short.MAX_VALUE).toShort()
+                // Explicitly convert to Int first, then to Short
+                shortSamples[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
             }
 
             FileOutputStream(file).use { fos ->
-                writeWavHeader(fos, shortSamples.size, sampleRate, 1 /* mono */, 16 /* bits */)
+                writeWavHeader(fos, shortSamples.size, sampleRate, 1, 16)
                 val buffer = java.nio.ByteBuffer.allocate(shortSamples.size * 2)
                 buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
                 for (s in shortSamples) buffer.putShort(s)
@@ -100,7 +98,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun writeWavHeader(out: java.io.OutputStream, totalDataLen: Int, sampleRate: Int, channels: Int, bitsPerSample: Int) {
+    private fun writeWavHeader(out: FileOutputStream, totalDataLen: Int, sampleRate: Int, channels: Int, bitsPerSample: Int) {
         val byteRate = sampleRate * channels * bitsPerSample / 8
         val blockAlign = channels * bitsPerSample / 8
         val headerSize = 44
@@ -109,8 +107,8 @@ class MainActivity : AppCompatActivity() {
         out.write(intToByteArray(headerSize + totalDataLen))
         out.write("WAVE".toByteArray())
         out.write("fmt ".toByteArray())
-        out.write(intToByteArray(16)) // fmt chunk size
-        out.write(shortToByteArray(1)) // PCM format
+        out.write(intToByteArray(16))
+        out.write(shortToByteArray(1))
         out.write(shortToByteArray(channels.toShort()))
         out.write(intToByteArray(sampleRate))
         out.write(intToByteArray(byteRate))
