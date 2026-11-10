@@ -18,8 +18,10 @@ class MainActivity : AppCompatActivity() {
     private val ttsEngine by lazy { TtsEngine(this) }
     private val player = AudioPlayer()
     
-    private var lastGeneratedSamples: FloatArray? = null
+    // Accumulate all chunks here for the download feature
+    private var allGeneratedSamples = mutableListOf<Float>()
     private var lastSampleRate: Int = 0
+    private var isGenerating = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,31 +38,49 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            if (isGenerating) return@setOnClickListener
+            isGenerating = true
+            btnGenerate.isEnabled = false
+            btnDownload.isEnabled = false
+            
+            allGeneratedSamples.clear()
+            lastSampleRate = 0
+
             lifecycleScope.launch {
-                Toast.makeText(this@MainActivity, "Generating...", Toast.LENGTH_SHORT).show()
-                val result = ttsEngine.generateAudio(text)
+                Toast.makeText(this@MainActivity, "Generating & Playing...", Toast.LENGTH_SHORT).show()
                 
-                if (result != null) {
-                    lastGeneratedSamples = result.first
-                    lastSampleRate = result.second
+                ttsEngine.generateAudioStreaming(text) { samples, sampleRate ->
+                    // Initialize player on the first chunk
+                    if (lastSampleRate == 0) {
+                        lastSampleRate = sampleRate
+                        player.init(sampleRate)
+                    }
                     
-                    player.play(lastGeneratedSamples!!, lastSampleRate)
-                    Toast.makeText(this@MainActivity, "Playing...", Toast.LENGTH_SHORT).show()
-                    btnDownload.isEnabled = true
-                } else {
-                    Toast.makeText(this@MainActivity, "Generation Failed", Toast.LENGTH_LONG).show()
+                    // Accumulate for download
+                    allGeneratedSamples.addAll(samples.toList())
+                    
+                    // Play immediately (Real-time)
+                    player.playChunk(samples)
                 }
+                
+                // Wait for the last chunk to finish playing
+                player.waitForCompletion()
+                
+                isGenerating = false
+                btnGenerate.isEnabled = true
+                btnDownload.isEnabled = true
+                Toast.makeText(this@MainActivity, "Playback Complete", Toast.LENGTH_SHORT).show()
             }
         }
 
         btnDownload.setOnClickListener {
-            if (lastGeneratedSamples == null) {
+            if (allGeneratedSamples.isEmpty() || lastSampleRate == 0) {
                 Toast.makeText(this, "Generate audio first!", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             
             lifecycleScope.launch {
-                saveWavFile(lastGeneratedSamples!!, lastSampleRate)
+                saveWavFile(allGeneratedSamples.toFloatArray(), lastSampleRate)
             }
         }
     }
@@ -69,14 +89,13 @@ class MainActivity : AppCompatActivity() {
         val dir = File(filesDir, "audio")
         if (!dir.exists()) dir.mkdirs()
         
-        val fileName = "output_${System.currentTimeMillis()}.wav"
+        val fileName = "piper_output_${System.currentTimeMillis()}.wav"
         val file = File(dir, fileName)
         
         try {
             val shortSamples = ShortArray(samples.size)
             for (i in samples.indices) {
                 val clamped = samples[i].coerceIn(-1.0f, 1.0f)
-                // Explicitly convert to Int first, then to Short
                 shortSamples[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
             }
 
@@ -89,7 +108,7 @@ class MainActivity : AppCompatActivity() {
             }
             
             runOnUiThread {
-                Toast.makeText(this, "Saved to Internal Storage: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Saved: ${file.absolutePath}", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             runOnUiThread {
