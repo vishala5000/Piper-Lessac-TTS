@@ -31,23 +31,26 @@ class TtsEngine(private val context: Context) {
             }
         }
         
+        // Debug: Log exactly what was extracted
+        Log.d("TtsEngine", "📂 Contents of modelDir: ${modelDir.list()?.joinToString()}")
+        
         // Find required files
         val modelFile = findFile(modelDir, ".onnx")
         val tokensFile = File(modelDir, "tokens.txt")
         val espeakDataDir = File(modelDir, "espeak-ng-data")
         
         if (modelFile == null || !modelFile.exists()) {
-            initError = "Missing .onnx model file"
+            initError = "Missing .onnx model file in ${modelDir.absolutePath}"
             Log.e("TtsEngine", initError!!)
             return false
         }
         if (!tokensFile.exists()) {
-            initError = "Missing tokens.txt"
+            initError = "Missing tokens.txt in ${modelDir.absolutePath}"
             Log.e("TtsEngine", initError!!)
             return false
         }
         if (!espeakDataDir.exists()) {
-            initError = "Missing espeak-ng-data folder"
+            initError = "Missing espeak-ng-data folder in ${modelDir.absolutePath}"
             Log.e("TtsEngine", initError!!)
             return false
         }
@@ -57,11 +60,12 @@ class TtsEngine(private val context: Context) {
         Log.d("TtsEngine", "📁 espeak-ng: ${espeakDataDir.absolutePath}")
         
         try {
+            // 🎯 CRITICAL FIX: dataDir must point DIRECTLY to the espeak-ng-data folder
             val vitsConfig = OfflineTtsVitsModelConfig(
                 model = modelFile.absolutePath,
                 lexicon = "",
                 tokens = tokensFile.absolutePath,
-                dataDir = espeakDataDir.parentFile?.absolutePath ?: "",
+                dataDir = espeakDataDir.absolutePath, // FIXED: was incorrectly pointing to parent
                 dictDir = "",
                 noiseScale = 0.667f,
                 noiseScaleW = 0.8f,
@@ -70,18 +74,18 @@ class TtsEngine(private val context: Context) {
             
             val modelConfig = OfflineTtsModelConfig(
                 vits = vitsConfig,
-                numThreads = 4,
+                numThreads = 2, // Safer for all devices
                 debug = false
             )
             
             val config = OfflineTtsConfig(
                 model = modelConfig,
                 ruleFsts = "",
-                maxNumSentences = 2
+                maxNumSentences = 1
             )
             
             tts = OfflineTts(null, config)
-            Log.d("TtsEngine", "✅ TTS Engine Initialized (100% Offline).")
+            Log.d("TtsEngine", "✅ TTS Engine Initialized successfully (100% Offline).")
             return true
         } catch (e: Exception) {
             initError = "TTS Init failed: ${e.message}"
