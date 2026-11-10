@@ -8,28 +8,17 @@ import java.nio.ByteOrder
 class AudioPlayer {
     private var audioTrack: AudioTrack? = null
 
-    fun play(samples: FloatArray, sampleRate: Int) {
+    fun init(sampleRate: Int) {
         stop()
         
-        val shortSamples = ShortArray(samples.size)
-        for (i in samples.indices) {
-            val clamped = samples[i].coerceIn(-1.0f, 1.0f)
-            // Explicitly convert to Int first, then to Short
-            shortSamples[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
-        }
-
-        val byteCount = shortSamples.size * 2
-        val buffer = ByteBuffer.allocate(byteCount)
-        buffer.order(ByteOrder.LITTLE_ENDIAN)
-        for (s in shortSamples) {
-            buffer.putShort(s)
-        }
-
         val minBufferSize = AudioTrack.getMinBufferSize(
             sampleRate,
             AudioFormat.CHANNEL_OUT_MONO,
             AudioFormat.ENCODING_PCM_16BIT
         )
+        
+        // Use a buffer 4x the minimum for ultra-smooth, gapless streaming
+        val bufferSize = maxOf(minBufferSize * 4, 32768)
 
         audioTrack = AudioTrack.Builder()
             .setAudioAttributes(android.media.AudioAttributes.Builder()
@@ -41,17 +30,44 @@ class AudioPlayer {
                 .setSampleRate(sampleRate)
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .build())
-            .setBufferSizeInBytes(maxOf(minBufferSize, byteCount))
-            .setTransferMode(AudioTrack.MODE_STATIC)
+            .setBufferSizeInBytes(bufferSize)
+            .setTransferMode(AudioTrack.MODE_STREAM) // CRITICAL for real-time chunked playback
             .build()
-
-        audioTrack?.write(buffer.array(), 0, byteCount)
+        
         audioTrack?.play()
+    }
+
+    fun playChunk(samples: FloatArray) {
+        val track = audioTrack ?: return
+        
+        val shortSamples = ShortArray(samples.size)
+        for (i in samples.indices) {
+            val clamped = samples[i].coerceIn(-1.0f, 1.0f)
+            shortSamples[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
+        }
+
+        val byteCount = shortSamples.size * 2
+        val buffer = ByteBuffer.allocate(byteCount)
+        buffer.order(ByteOrder.LITTLE_ENDIAN)
+        for (s in shortSamples) {
+            buffer.putShort(s)
+        }
+
+        // Stream the chunk directly to the audio hardware
+        track.write(buffer.array(), 0, byteCount)
     }
 
     fun stop() {
         audioTrack?.stop()
         audioTrack?.release()
         audioTrack = null
+    }
+    
+    fun waitForCompletion() {
+        audioTrack?.let { track ->
+            while (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                Thread.sleep(50)
+            }
+        }
     }
 }
