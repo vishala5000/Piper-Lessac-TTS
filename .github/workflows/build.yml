@@ -26,21 +26,30 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # 🎯 Download Piper models from your GitHub Release into assets folder
-      - name: Download Piper Models to Assets
+      # 🎯 Download PRE-CONVERTED sherpa-onnx compatible Piper model
+      # This package includes: .onnx model + tokens.txt + espeak-ng-data
+      - name: Download Sherpa-ONNX Piper Model (Pre-Converted)
         run: |
-          mkdir -p app/src/main/assets/
-          echo "Downloading en_US-lessac-medium.onnx..."
-          curl -L -o app/src/main/assets/en_US-lessac-medium.onnx \
-            "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/en_US-lessac-medium.onnx"
-          echo "Downloading en_US-lessac-medium.onnx.json..."
-          curl -L -o app/src/main/assets/en_US-lessac-medium.onnx.json \
-            "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/en_US-lessac-medium.onnx.json"
+          echo "📦 Downloading pre-converted sherpa-onnx Piper model..."
+          curl -L -o piper-model.tar.bz2 \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-piper-en_US-lessac-medium.tar.bz2"
           
-          echo "Verifying downloaded files:"
-          ls -lh app/src/main/assets/
+          echo "📂 Extracting model files..."
+          tar -xjf piper-model.tar.bz2
+          
+          echo "📁 Preparing assets folder..."
+          mkdir -p app/src/main/assets/piper-model/
+          
+          # Copy all required files into assets
+          cp -r sherpa-onnx-piper-en_US-lessac-medium/* app/src/main/assets/piper-model/
+          
+          echo "✅ Verifying extracted files:"
+          ls -lh app/src/main/assets/piper-model/
+          echo ""
+          echo "📋 Contents of espeak-ng-data (if present):"
+          ls app/src/main/assets/piper-model/espeak-ng-data/ 2>/dev/null | head -5 || echo "No espeak-ng-data folder"
 
-      # 🔑 Auto-Generate Keystore with "Endless" Validity (Year 9975)
+      # 🔑 Auto-Generate Keystore with "Endless" Validity
       - name: Generate Debug Keystore
         run: |
           keytool -genkeypair \
@@ -53,7 +62,7 @@ jobs:
             -keypass android \
             -dname "CN=Android Debug, O=Android, C=US"
 
-      # 🏗️ Build APK (now includes bundled model assets)
+      # 🏗️ Build APK
       - name: Build APK
         run: |
           ./gradlew assembleRelease --stacktrace
@@ -79,7 +88,6 @@ jobs:
             exit 1
           fi
 
-          echo "Signing APK with: $APKSIGNER"
           "$APKSIGNER" sign \
             --ks debug.keystore \
             --ks-key-alias piper_android \
