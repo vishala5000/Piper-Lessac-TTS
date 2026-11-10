@@ -26,14 +26,14 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # Step 1: Auto-Generate Keystore with "Endless" Validity
+      # Step 1: Auto-Generate Keystore with "Endless" Validity (Year 9975)
       - name: Generate Debug Keystore
         run: |
           keytool -genkeypair \
             -alias piper_android \
             -keyalg RSA \
             -keysize 2048 \
-            -validity 2147483647 \
+            -validity 2900000 \
             -keystore debug.keystore \
             -storepass android \
             -keypass android \
