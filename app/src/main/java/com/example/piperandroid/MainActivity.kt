@@ -39,7 +39,7 @@ class MainActivity : AppCompatActivity() {
 
             if (isGenerating) return@setOnClickListener
             isGenerating = true
-            btnGenerate.text = "Downloading Model..."
+            btnGenerate.text = "Initializing..."
             btnGenerate.isEnabled = false
             btnDownload.isEnabled = false
             
@@ -62,6 +62,8 @@ class MainActivity : AppCompatActivity() {
                             shortChunk[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
                         }
                         allGeneratedSamples.addAll(shortChunk.toList())
+                        
+                        // Real-time auto-play
                         player.playChunk(samples)
                     },
                     onError = { errorMsg ->
@@ -74,7 +76,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 )
                 
-                // Only wait for completion if we actually started playing
                 if (lastSampleRate > 0) {
                     player.waitForCompletion()
                 }
@@ -103,10 +104,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun saveWavFilePerfect(sampleRate: Int) {
+        // Saves to App Internal Storage (No permissions required, 100% offline)
         val dir = File(filesDir, "audio")
         if (!dir.exists()) dir.mkdirs()
         
-        val fileName = "piper_perfect_${System.currentTimeMillis()}.wav"
+        val fileName = "piper_offline_${System.currentTimeMillis()}.wav"
         val file = File(dir, fileName)
         
         try {
@@ -122,7 +124,7 @@ class MainActivity : AppCompatActivity() {
             }
             
             runOnUiThread {
-                Toast.makeText(this, "Saved to:\n${file.absolutePath}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Saved to Internal Storage:\n${file.absolutePath}", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             runOnUiThread {
