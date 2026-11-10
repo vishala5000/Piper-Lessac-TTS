@@ -15,13 +15,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5 # Updated to v5 to remove deprecation warning
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle (for caching)
-        uses: gradle/gradle-build-action@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4 # Updated to v4 to remove deprecation warning
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
@@ -44,13 +44,12 @@ jobs:
         run: |
           ./gradlew assembleRelease --stacktrace
           
-          # Find the generated APK
           if [ -f "app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
             cp app/build/outputs/apk/release/app-release-unsigned.apk unsigned.apk
           elif [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
             cp app/build/outputs/apk/release/app-release.apk unsigned.apk
           else
-            echo "APK not found! Listing contents:"
+            echo "APK not found!"
             find app/build/outputs -name "*.apk" -type f
             exit 1
           fi
@@ -58,7 +57,6 @@ jobs:
       # Step 3: Sign with apksigner
       - name: Sign APK with apksigner
         run: |
-          # ubuntu-latest has Android SDK pre-installed at this path
           export ANDROID_HOME=/usr/local/lib/android/sdk
           APKSIGNER=$(find "$ANDROID_HOME" -name "apksigner" -type f | head -n 1)
           
