@@ -26,30 +26,49 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # 🎯 Download PRE-CONVERTED sherpa-onnx compatible Piper model
-      # This package includes: .onnx model + tokens.txt + espeak-ng-data
-      - name: Download Sherpa-ONNX Piper Model (Pre-Converted)
+      # 🎯 SMART DOWNLOAD: Uses GitHub API to find the correct Piper model
+      - name: Find and Download Sherpa-ONNX Piper Model
         run: |
-          echo "📦 Downloading pre-converted sherpa-onnx Piper model..."
-          curl -L -o piper-model.tar.bz2 \
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-piper-en_US-lessac-medium.tar.bz2"
+          echo "🔍 Searching for Piper Lessac model in sherpa-onnx releases..."
           
-          echo "📂 Extracting model files..."
+          # Query GitHub API for all assets in tts-models release
+          RELEASE_INFO=$(curl -s "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/tags/tts-models")
+          
+          # Find the Piper Lessac medium model (try multiple possible names)
+          MODEL_URL=$(echo "$RELEASE_INFO" | grep -oE '"browser_download_url":\s*"[^"]*piper[^"]*lessac[^"]*medium[^"]*\.tar\.bz2"' | head -1 | sed 's/.*"browser_download_url":\s*"//;s/"$//')
+          
+          if [ -z "$MODEL_URL" ]; then
+            echo "❌ Piper Lessac model not found. Listing all available TTS models:"
+            echo "$RELEASE_INFO" | grep -oE '"name":\s*"[^"]*\.tar\.bz2"' | head -20
+            exit 1
+          fi
+          
+          echo "✅ Found model: $MODEL_URL"
+          echo "📦 Downloading..."
+          curl -L -o piper-model.tar.bz2 "$MODEL_URL"
+          
+          echo "📂 Extracting..."
           tar -xjf piper-model.tar.bz2
           
-          echo "📁 Preparing assets folder..."
+          # Find the extracted folder (name may vary)
+          EXTRACTED_DIR=$(ls -d sherpa-onnx-piper-* 2>/dev/null | head -1)
+          if [ -z "$EXTRACTED_DIR" ]; then
+            echo "❌ Extraction failed. Contents:"
+            ls -la
+            exit 1
+          fi
+          
+          echo "📁 Preparing assets from: $EXTRACTED_DIR"
           mkdir -p app/src/main/assets/piper-model/
+          cp -r "$EXTRACTED_DIR"/* app/src/main/assets/piper-model/
           
-          # Copy all required files into assets
-          cp -r sherpa-onnx-piper-en_US-lessac-medium/* app/src/main/assets/piper-model/
-          
-          echo "✅ Verifying extracted files:"
-          ls -lh app/src/main/assets/piper-model/
+          echo "✅ Final assets structure:"
+          find app/src/main/assets/piper-model/ -type f | head -20
           echo ""
-          echo "📋 Contents of espeak-ng-data (if present):"
-          ls app/src/main/assets/piper-model/espeak-ng-data/ 2>/dev/null | head -5 || echo "No espeak-ng-data folder"
+          echo "📋 File sizes:"
+          du -sh app/src/main/assets/piper-model/*
 
-      # 🔑 Auto-Generate Keystore with "Endless" Validity
+      # 🔑 Auto-Generate Keystore
       - name: Generate Debug Keystore
         run: |
           keytool -genkeypair \
@@ -82,12 +101,6 @@ jobs:
         run: |
           export ANDROID_HOME=/usr/local/lib/android/sdk
           APKSIGNER=$(find "$ANDROID_HOME" -name "apksigner" -type f | head -n 1)
-          
-          if [ -z "$APKSIGNER" ]; then
-            echo "apksigner not found in Android SDK!"
-            exit 1
-          fi
-
           "$APKSIGNER" sign \
             --ks debug.keystore \
             --ks-key-alias piper_android \
