@@ -23,12 +23,13 @@ class TtsEngine(private val context: Context) {
         val jsonFile = File(modelDir, "$modelName.onnx.json")
         
         if (!onnxFile.exists() || !jsonFile.exists()) {
-            Log.d("TtsEngine", "Downloading model...")
+            Log.d("TtsEngine", "Downloading model (this may take a moment)...")
             val onnxUrl = "https://raw.githubusercontent.com/rhasspy/piper-voices/main/en/en_US/lessac/medium/$modelName.onnx"
             val jsonUrl = "https://raw.githubusercontent.com/rhasspy/piper-voices/main/en/en_US/lessac/medium/$modelName.onnx.json"
             
             downloadFile(onnxUrl, onnxFile)
             downloadFile(jsonUrl, jsonFile)
+            Log.d("TtsEngine", "Model downloaded successfully.")
         }
         
         val vitsConfig = OfflineTtsVitsModelConfig(
@@ -41,7 +42,7 @@ class TtsEngine(private val context: Context) {
         
         val modelConfig = OfflineTtsModelConfig(
             vits = vitsConfig,
-            numThreads = 4, // Optimized for mobile speed
+            numThreads = 4, // Optimal balance of speed and battery
             debug = false
         )
         
@@ -72,8 +73,9 @@ class TtsEngine(private val context: Context) {
     }
 
     /**
-     * Generates audio in real-time chunks for instant playback.
-     * Splits text by punctuation to ensure perfect prosody and intonation.
+     * Generates audio in real-time chunks. 
+     * PERFECT PROSODY: Only splits on sentence endings (. ! ?) so commas and clauses 
+     * are processed naturally by the TTS engine without resetting its state.
      */
     suspend fun generateAudioStreaming(
         text: String, 
@@ -82,16 +84,16 @@ class TtsEngine(private val context: Context) {
         initIfNeeded()
         if (tts == null) return
         
-        // Clean text and split by punctuation (. ! ? ; ,) to ensure perfect pauses and intonation
+        // Clean text and split ONLY by sentence-ending punctuation
         val cleanText = text.replace(Regex("\\s+"), " ").trim()
-        val chunks = cleanText.split("(?<=[.!?;,:])\\s+".toRegex())
+        val chunks = cleanText.split("(?<=[.!?])\\s+".toRegex())
             .map { it.trim() }
             .filter { it.isNotEmpty() }
         
         withContext(Dispatchers.Default) {
             for (chunk in chunks) {
                 try {
-                    // speed = 1.0f is the native, perfect speed for Lessac
+                    // 1.0f is the native, perfectly tuned speed for the Lessac voice
                     val result = tts!!.generate(chunk, sid = 0, speed = 1.0f)
                     onChunkGenerated(result.samples, result.sampleRate)
                 } catch (e: Exception) {
