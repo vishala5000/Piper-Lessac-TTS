@@ -26,18 +26,18 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # Step 1: Auto-Generate Keystore (No secrets required)
+      # Step 1: Auto-Generate Keystore with "Endless" Validity
       - name: Generate Debug Keystore
         run: |
           keytool -genkeypair \
             -alias piper_android \
             -keyalg RSA \
             -keysize 2048 \
-            -validity 10000 \
+            -validity 2147483647 \
             -keystore debug.keystore \
             -storepass android \
             -keypass android \
-            -dname "CN=Android Debug,O=Android,C=US"
+            -dname "CN=Android Debug, O=Android, C=US"
 
       # Step 2: Build APK
       - name: Build APK
