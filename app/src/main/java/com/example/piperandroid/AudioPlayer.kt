@@ -1,7 +1,6 @@
 package com.example.piperandroid
 
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -12,15 +11,14 @@ class AudioPlayer {
     fun play(samples: FloatArray, sampleRate: Int) {
         stop()
         
-        // Convert Float (-1.0 to 1.0) to Short PCM
         val shortSamples = ShortArray(samples.size)
         for (i in samples.indices) {
-            // Clamp values
             val clamped = samples[i].coerceIn(-1.0f, 1.0f)
-            shortSamples[i] = (clamped * Short.MAX_VALUE).toShort()
+            // Explicitly convert to Int first, then to Short
+            shortSamples[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
         }
 
-        val byteCount = shortSamples.size * 2 // 2 bytes per short
+        val byteCount = shortSamples.size * 2
         val buffer = ByteBuffer.allocate(byteCount)
         buffer.order(ByteOrder.LITTLE_ENDIAN)
         for (s in shortSamples) {
