@@ -6,16 +6,12 @@ import com.k2fsa.sherpa.onnx.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.URL
 
 class TtsEngine(private val context: Context) {
 
     private var tts: OfflineTts? = null
     private var initError: String? = null
     private val modelName = "en_US-lessac-medium"
-    
-    // Direct download URLs for your specific GitHub Release
-    private val baseUrl = "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/"
     
     suspend fun initIfNeeded(): Boolean {
         if (tts != null) return true
@@ -27,18 +23,14 @@ class TtsEngine(private val context: Context) {
         val onnxFile = File(modelDir, "$modelName.onnx")
         val jsonFile = File(modelDir, "$modelName.onnx.json")
         
-        // Download from YOUR GitHub release if not already present
+        // Extract from APK assets to internal storage if not already there
         if (!onnxFile.exists() || !jsonFile.exists()) {
-            Log.d("TtsEngine", "Downloading model from GitHub Release (this may take a minute)...")
-            val onnxUrl = "${baseUrl}$modelName.onnx"
-            val jsonUrl = "${baseUrl}$modelName.onnx.json"
-            
             try {
-                downloadFile(onnxUrl, onnxFile)
-                downloadFile(jsonUrl, jsonFile)
-                Log.d("TtsEngine", "Model downloaded successfully from GitHub Release.")
+                copyAssetToFile("$modelName.onnx", onnxFile)
+                copyAssetToFile("$modelName.onnx.json", jsonFile)
+                Log.d("TtsEngine", "Model extracted from APK assets successfully.")
             } catch (e: Exception) {
-                initError = "Download failed. Check internet & ensure files are in the release. (${e.message})"
+                initError = "Failed to extract model from assets: ${e.message}"
                 Log.e("TtsEngine", initError!!, e)
                 return false
             }
@@ -66,7 +58,7 @@ class TtsEngine(private val context: Context) {
         
         try {
             tts = OfflineTts(null, config)
-            Log.d("TtsEngine", "TTS Engine Initialized successfully (Offline ready).")
+            Log.d("TtsEngine", "TTS Engine Initialized successfully (100% Offline).")
             return true
         } catch (e: Exception) {
             initError = "TTS Initialization failed: ${e.message}"
@@ -75,13 +67,10 @@ class TtsEngine(private val context: Context) {
         }
     }
 
-    private suspend fun downloadFile(urlStr: String, dest: File) {
-        withContext(Dispatchers.IO) {
-            // openStream() automatically follows GitHub's 302 redirect to the actual CDN
-            URL(urlStr).openStream().use { input ->
-                dest.outputStream().use { output ->
-                    input.copyTo(output)
-                }
+    private fun copyAssetToFile(assetName: String, destFile: File) {
+        context.assets.open(assetName).use { input ->
+            destFile.outputStream().use { output ->
+                input.copyTo(output)
             }
         }
     }
