@@ -46,7 +46,7 @@ class TtsEngine(private val context: Context) {
         
         val modelConfig = OfflineTtsModelConfig(
             vits = vitsConfig,
-            numThreads = 4, // Maximize offline generation speed
+            numThreads = 4,
             debug = false
         )
         
