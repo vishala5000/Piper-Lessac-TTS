@@ -34,7 +34,7 @@ jobs:
           # Query GitHub API for all assets in tts-models release
           RELEASE_INFO=$(curl -s "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/tags/tts-models")
           
-          # Find the Piper Lessac medium model (try multiple possible names)
+          # Find the Piper Lessac medium model
           MODEL_URL=$(echo "$RELEASE_INFO" | grep -oE '"browser_download_url":\s*"[^"]*piper[^"]*lessac[^"]*medium[^"]*\.tar\.bz2"' | head -1 | sed 's/.*"browser_download_url":\s*"//;s/"$//')
           
           if [ -z "$MODEL_URL" ]; then
@@ -50,10 +50,11 @@ jobs:
           echo "📂 Extracting..."
           tar -xjf piper-model.tar.bz2
           
-          # Find the extracted folder (name may vary)
-          EXTRACTED_DIR=$(ls -d sherpa-onnx-piper-* 2>/dev/null | head -1)
-          if [ -z "$EXTRACTED_DIR" ]; then
-            echo "❌ Extraction failed. Contents:"
+          # 🎯 FIX: Look for the correct extracted folder name (vits-piper-*)
+          EXTRACTED_DIR=$(ls -d vits-piper-* 2>/dev/null | head -1)
+          
+          if [ -z "$EXTRACTED_DIR" ] || [ ! -d "$EXTRACTED_DIR" ]; then
+            echo "❌ Extraction failed or directory not found. Contents:"
             ls -la
             exit 1
           fi
