@@ -18,8 +18,8 @@ class MainActivity : AppCompatActivity() {
     private val ttsEngine by lazy { TtsEngine(this) }
     private val player = AudioPlayer()
     
-    // Accumulate all chunks here for the download feature
-    private var allGeneratedSamples = mutableListOf<Float>()
+    // PERFECT MEMORY: Accumulate Short directly to avoid Float->Short conversion twice
+    private var allGeneratedSamples = mutableListOf<Short>()
     private var lastSampleRate: Int = 0
     private var isGenerating = false
 
@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
 
             if (isGenerating) return@setOnClickListener
             isGenerating = true
+            btnGenerate.text = "Generating & Playing..."
             btnGenerate.isEnabled = false
             btnDownload.isEnabled = false
             
@@ -47,8 +48,6 @@ class MainActivity : AppCompatActivity() {
             lastSampleRate = 0
 
             lifecycleScope.launch {
-                Toast.makeText(this@MainActivity, "Generating & Playing...", Toast.LENGTH_SHORT).show()
-                
                 ttsEngine.generateAudioStreaming(text) { samples, sampleRate ->
                     // Initialize player on the first chunk
                     if (lastSampleRate == 0) {
@@ -56,17 +55,23 @@ class MainActivity : AppCompatActivity() {
                         player.init(sampleRate)
                     }
                     
-                    // Accumulate for download
-                    allGeneratedSamples.addAll(samples.toList())
+                    // Convert Float to Short ONCE and accumulate for download
+                    val shortChunk = ShortArray(samples.size)
+                    for (i in samples.indices) {
+                        val clamped = samples[i].coerceIn(-1.0f, 1.0f)
+                        shortChunk[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
+                    }
+                    allGeneratedSamples.addAll(shortChunk.toList())
                     
-                    // Play immediately (Real-time)
+                    // Play immediately (Real-time, gapless)
                     player.playChunk(samples)
                 }
                 
-                // Wait for the last chunk to finish playing
+                // Wait for the audio hardware to finish playing the last chunk
                 player.waitForCompletion()
                 
                 isGenerating = false
+                btnGenerate.text = "Generate & Play"
                 btnGenerate.isEnabled = true
                 btnDownload.isEnabled = true
                 Toast.makeText(this@MainActivity, "Playback Complete", Toast.LENGTH_SHORT).show()
@@ -80,35 +85,32 @@ class MainActivity : AppCompatActivity() {
             }
             
             lifecycleScope.launch {
-                saveWavFile(allGeneratedSamples.toFloatArray(), lastSampleRate)
+                saveWavFilePerfect(lastSampleRate)
             }
         }
     }
 
-    private suspend fun saveWavFile(samples: FloatArray, sampleRate: Int) {
+    private suspend fun saveWavFilePerfect(sampleRate: Int) {
         val dir = File(filesDir, "audio")
         if (!dir.exists()) dir.mkdirs()
         
-        val fileName = "piper_output_${System.currentTimeMillis()}.wav"
+        val fileName = "piper_perfect_${System.currentTimeMillis()}.wav"
         val file = File(dir, fileName)
         
         try {
-            val shortSamples = ShortArray(samples.size)
-            for (i in samples.indices) {
-                val clamped = samples[i].coerceIn(-1.0f, 1.0f)
-                shortSamples[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
-            }
+            val shortSamples = allGeneratedSamples.toShortArray()
+            val totalDataLen = shortSamples.size * 2 // 2 bytes per short
 
             FileOutputStream(file).use { fos ->
-                writeWavHeader(fos, shortSamples.size, sampleRate, 1, 16)
-                val buffer = java.nio.ByteBuffer.allocate(shortSamples.size * 2)
+                writeWavHeader(fos, totalDataLen, sampleRate, 1, 16)
+                val buffer = java.nio.ByteBuffer.allocate(totalDataLen)
                 buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
                 for (s in shortSamples) buffer.putShort(s)
                 fos.write(buffer.array())
             }
             
             runOnUiThread {
-                Toast.makeText(this, "Saved: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Saved to:\n${file.absolutePath}", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             runOnUiThread {
