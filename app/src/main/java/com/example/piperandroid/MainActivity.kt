@@ -1,14 +1,21 @@
 package com.example.piperandroid
 
+import android.content.ContentValues
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -62,8 +69,6 @@ class MainActivity : AppCompatActivity() {
                             shortChunk[i] = (clamped * Short.MAX_VALUE).toInt().toShort()
                         }
                         allGeneratedSamples.addAll(shortChunk.toList())
-                        
-                        // Real-time auto-play
                         player.playChunk(samples)
                     },
                     onError = { errorMsg ->
@@ -98,67 +103,183 @@ class MainActivity : AppCompatActivity() {
             }
             
             lifecycleScope.launch {
-                saveWavFilePerfect(lastSampleRate)
+                saveWavToPublicDownloads(lastSampleRate)
             }
         }
     }
 
-    private suspend fun saveWavFilePerfect(sampleRate: Int) {
-        // Saves to App Internal Storage (No permissions required, 100% offline)
-        val dir = File(filesDir, "audio")
-        if (!dir.exists()) dir.mkdirs()
-        
-        val fileName = "piper_offline_${System.currentTimeMillis()}.wav"
-        val file = File(dir, fileName)
-        
-        try {
-            val shortSamples = allGeneratedSamples.toShortArray()
-            val totalDataLen = shortSamples.size * 2
+    /**
+     * Saves WAV to public Downloads/PiperTTS/ folder.
+     * Upsamples to 44100 Hz for 100% compatibility with ALL video editors.
+     */
+    private suspend fun saveWavToPublicDownloads(originalSampleRate: Int) {
+        withContext(Dispatchers.IO) {
+            try {
+                val originalSamples = allGeneratedSamples.toShortArray()
+                
+                // 🎯 CRITICAL: Upsample to 44100 Hz for video editor compatibility
+                // Piper outputs 22050 Hz, but CapCut/InShot/VN/KineMaster require 44100 Hz
+                val upsampledSamples = upsample2x(originalSamples)
+                val targetSampleRate = originalSampleRate * 2  // 44100 Hz
+                
+                val fileName = "PiperTTS_${System.currentTimeMillis()}.wav"
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Android 10+ : Use MediaStore (no permissions needed)
+                    saveViaMediaStore(upsampledSamples, targetSampleRate, fileName)
+                } else {
+                    // Android 9 and below: Use direct file write
+                    saveViaLegacyStorage(upsampledSamples, targetSampleRate, fileName)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Save failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
-            FileOutputStream(file).use { fos ->
-                writeWavHeader(fos, totalDataLen, sampleRate, 1, 16)
-                val buffer = java.nio.ByteBuffer.allocate(totalDataLen)
-                buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                for (s in shortSamples) buffer.putShort(s)
-                fos.write(buffer.array())
+    /**
+     * Upsamples audio by 2x using linear interpolation.
+     * Converts 22050 Hz → 44100 Hz for universal video editor support.
+     */
+    private fun upsample2x(samples: ShortArray): ShortArray {
+        if (samples.isEmpty()) return samples
+        val result = ShortArray(samples.size * 2)
+        for (i in samples.indices) {
+            result[i * 2] = samples[i]
+            if (i < samples.size - 1) {
+                // Linear interpolation between current and next sample
+                val interpolated = (samples[i].toInt() + samples[i + 1].toInt()) / 2
+                result[i * 2 + 1] = interpolated.toShort()
+            } else {
+                result[i * 2 + 1] = samples[i]
+            }
+        }
+        return result
+    }
+
+    /**
+     * Android 10+ : Saves via MediaStore to public Downloads folder
+     */
+    private fun saveViaMediaStore(samples: ShortArray, sampleRate: Int, fileName: String) {
+        val resolver = contentResolver
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Audio.Media.MIME_TYPE, "audio/wav")
+            put(MediaStore.Audio.Media.RELATIVE_PATH, "Download/PiperTTS")
+            put(MediaStore.Audio.Media.IS_PENDING, 1)
+            put(MediaStore.Audio.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+        }
+        
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+        
+        val uri = resolver.insert(collection, contentValues)
+        uri?.let {
+            resolver.openOutputStream(it).use { outputStream ->
+                outputStream?.let { os ->
+                    writeWavToStream(os, samples, sampleRate)
+                }
             }
             
-            runOnUiThread {
-                Toast.makeText(this, "Saved to Internal Storage:\n${file.absolutePath}", Toast.LENGTH_LONG).show()
+            // Mark as fully written
+            val updateValues = ContentValues().apply {
+                put(MediaStore.Audio.Media.IS_PENDING, 0)
             }
-        } catch (e: Exception) {
+            resolver.update(it, updateValues, null, null)
+            
             runOnUiThread {
-                Toast.makeText(this, "Save failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@MainActivity,
+                    "✓ Saved to Downloads/PiperTTS/\n$fileName\n\nReady for video editors!",
+                    Toast.LENGTH_LONG
+                ).show()
             }
+        } ?: run {
+            throw Exception("Failed to create file in Downloads folder")
         }
     }
 
-    private fun writeWavHeader(out: FileOutputStream, totalDataLen: Int, sampleRate: Int, channels: Int, bitsPerSample: Int) {
+    /**
+     * Android 9 and below: Direct file write to public Downloads
+     */
+    private fun saveViaLegacyStorage(samples: ShortArray, sampleRate: Int, fileName: String) {
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val piperDir = File(downloadsDir, "PiperTTS")
+        if (!piperDir.exists()) piperDir.mkdirs()
+        
+        val file = File(piperDir, fileName)
+        FileOutputStream(file).use { fos ->
+            writeWavToStream(fos, samples, sampleRate)
+        }
+        
+        runOnUiThread {
+            Toast.makeText(
+                this@MainActivity,
+                "✓ Saved to Downloads/PiperTTS/\n$fileName\n\nReady for video editors!",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    /**
+     * Writes a standard 16-bit PCM WAV file (compatible with ALL video editors)
+     * Format: 44100 Hz, 16-bit, Mono, PCM
+     */
+    private fun writeWavToStream(out: OutputStream, samples: ShortArray, sampleRate: Int) {
+        val channels = 1
+        val bitsPerSample = 16
         val byteRate = sampleRate * channels * bitsPerSample / 8
         val blockAlign = channels * bitsPerSample / 8
+        val dataSize = samples.size * 2
         val headerSize = 44
         
+        // RIFF Header
         out.write("RIFF".toByteArray())
-        out.write(intToByteArray(headerSize + totalDataLen))
+        out.write(intToByteArray(headerSize + dataSize - 8))
         out.write("WAVE".toByteArray())
+        
+        // fmt chunk
         out.write("fmt ".toByteArray())
-        out.write(intToByteArray(16))
-        out.write(shortToByteArray(1))
-        out.write(shortToByteArray(channels.toShort()))
-        out.write(intToByteArray(sampleRate))
-        out.write(intToByteArray(byteRate))
+        out.write(intToByteArray(16))                    // Chunk size
+        out.write(shortToByteArray(1))                   // PCM format
+        out.write(shortToByteArray(channels.toShort()))  // Mono
+        out.write(intToByteArray(sampleRate))            // 44100 Hz
+        out.write(intToByteArray(byteRate))              // Byte rate
         out.write(shortToByteArray(blockAlign.toShort()))
         out.write(shortToByteArray(bitsPerSample.toShort()))
+        
+        // data chunk
         out.write("data".toByteArray())
-        out.write(intToByteArray(totalDataLen))
+        out.write(intToByteArray(dataSize))
+        
+        // Audio samples
+        val buffer = java.nio.ByteBuffer.allocate(dataSize)
+        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        for (s in samples) buffer.putShort(s)
+        out.write(buffer.array())
+        
+        out.flush()
     }
 
     private fun intToByteArray(value: Int): ByteArray {
-        return byteArrayOf(value.toByte(), (value shr 8).toByte(), (value shr 16).toByte(), (value shr 24).toByte())
+        return byteArrayOf(
+            value.toByte(),
+            (value shr 8).toByte(),
+            (value shr 16).toByte(),
+            (value shr 24).toByte()
+        )
     }
 
     private fun shortToByteArray(value: Short): ByteArray {
-        return byteArrayOf(value.toByte(), (value.toInt() shr 8).toByte())
+        return byteArrayOf(
+            value.toByte(),
+            (value.toInt() shr 8).toByte()
+        )
     }
     
     override fun onDestroy() {
