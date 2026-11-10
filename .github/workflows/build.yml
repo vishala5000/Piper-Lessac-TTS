@@ -26,19 +26,21 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # 🌟 NEW STEP: Download models from your GitHub Release into the assets folder
+      # 🎯 Download Piper models from your GitHub Release into assets folder
       - name: Download Piper Models to Assets
         run: |
           mkdir -p app/src/main/assets/
           echo "Downloading en_US-lessac-medium.onnx..."
-          curl -L -o app/src/main/assets/en_US-lessac-medium.onnx "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/en_US-lessac-medium.onnx"
+          curl -L -o app/src/main/assets/en_US-lessac-medium.onnx \
+            "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/en_US-lessac-medium.onnx"
           echo "Downloading en_US-lessac-medium.onnx.json..."
-          curl -L -o app/src/main/assets/en_US-lessac-medium.onnx.json "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/en_US-lessac-medium.onnx.json"
+          curl -L -o app/src/main/assets/en_US-lessac-medium.onnx.json \
+            "https://github.com/vishala5000/Piper-Lessac-TTS/releases/download/piper/en_US-lessac-medium.onnx.json"
           
           echo "Verifying downloaded files:"
           ls -lh app/src/main/assets/
 
-      # Step 1: Auto-Generate Keystore with "Endless" Validity
+      # 🔑 Auto-Generate Keystore with "Endless" Validity (Year 9975)
       - name: Generate Debug Keystore
         run: |
           keytool -genkeypair \
@@ -51,7 +53,7 @@ jobs:
             -keypass android \
             -dname "CN=Android Debug, O=Android, C=US"
 
-      # Step 2: Build APK (Now includes the downloaded assets)
+      # 🏗️ Build APK (now includes bundled model assets)
       - name: Build APK
         run: |
           ./gradlew assembleRelease --stacktrace
@@ -66,7 +68,7 @@ jobs:
             exit 1
           fi
 
-      # Step 3: Sign with apksigner
+      # ✍️ Sign with apksigner
       - name: Sign APK with apksigner
         run: |
           export ANDROID_HOME=/usr/local/lib/android/sdk
@@ -86,14 +88,14 @@ jobs:
             --out piper-tts-signed.apk \
             unsigned.apk
 
-      # Step 4: Verify Signature
+      # ✅ Verify Signature
       - name: Verify APK Signature
         run: |
           export ANDROID_HOME=/usr/local/lib/android/sdk
           APKSIGNER=$(find "$ANDROID_HOME" -name "apksigner" -type f | head -n 1)
           "$APKSIGNER" verify --verbose piper-tts-signed.apk
 
-      # Step 5: Upload Artifact
+      # 📦 Upload Artifact
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
