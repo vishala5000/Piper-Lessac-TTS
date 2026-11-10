@@ -40,6 +40,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     
-    // Sherpa-ONNX Android library (includes native binaries for Piper/VITS)
-    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:1.10.39")
+    // Correct JitPack dependency for Sherpa-ONNX Android AAR
+    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.5")
 }
